@@ -1,4 +1,5 @@
 import ApiMessage from "../../models/ApiMessage";
+import Ticket from "../../models/Ticket"; // Importe o modelo Ticket
 
 interface MessageData {
   sessionId: number;
@@ -10,9 +11,7 @@ interface MessageData {
   mediaUrl?: string;
   timestamp: number;
   externalKey: string;
-  // eslint-disable-next-line @typescript-eslint/ban-types
   messageWA: object;
-  // eslint-disable-next-line @typescript-eslint/ban-types
   apiConfig: object;
   tenantId: number;
 }
@@ -71,8 +70,32 @@ const UpsertMessageAPIService = async ({
   }
 
   if (!message) {
-    // throw new AppError("ERR_CREATING_MESSAGE", 501);
     throw new Error("ERR_CREATING_MESSAGE");
+  }
+
+  // Encontre todos os tickets associados ao número de contato
+  const tickets = await Ticket.findAll({
+    where: { userId: number }
+  });
+
+  // Concatene os históricos de mensagens de todos os tickets
+  let conversationHistory: any[] = [];
+  tickets.forEach(ticket => {
+    conversationHistory = conversationHistory.concat(ticket.messages);
+  });
+
+  // Adicione a nova mensagem ao histórico completo de mensagens
+  conversationHistory.push({
+    sender: 'user',
+    message: body,
+    timestamp: new Date(timestamp)
+  });
+
+  // Salve o histórico completo no ticket mais recente
+  const latestTicket = tickets.reduce((prev, current) => (prev.createdAt > current.createdAt) ? prev : current);
+  if (latestTicket) {
+    latestTicket.messages = conversationHistory;
+    await latestTicket.save();
   }
 
   return message;
